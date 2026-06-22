@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { motion, useReducedMotion, type Transition } from "framer-motion";
 import { Bookmark as BookmarkIcon, Loader2, User, X } from "lucide-react";
@@ -74,6 +74,8 @@ export default function AddBookmarkDialog({
     undefined
   );
   const [results, setResults] = useState<ProfileNode[]>([]);
+  // Height of the on-screen keyboard, so the bottom-sheet can sit above it.
+  const [kbInset, setKbInset] = useState(0);
 
   const trimmed = value.trim();
   const mode: "address" | "url" | "name" | "empty" = useMemo(() => {
@@ -131,6 +133,28 @@ export default function AddBookmarkDialog({
     return () => clearTimeout(handle);
     // Only re-run on the term/mode; runNameSearch is stable. Do not "fix" deps.
   }, [trimmed, mode]);
+
+  // Track the on-screen keyboard via the visual viewport so the sheet sits above
+  // it. iOS overlays the keyboard without resizing the layout viewport, which
+  // otherwise hides the input the user is typing in.
+  useEffect(() => {
+    if (!open) {
+      setKbInset(0);
+      return;
+    }
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      setKbInset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, [open]);
 
   const reset = () => {
     setValue("");
@@ -207,9 +231,11 @@ export default function AddBookmarkDialog({
             e.preventDefault();
             inputRef.current?.focus({ preventScroll: true });
           }}
+          // --kb lifts the mobile bottom-sheet above the on-screen keyboard.
+          style={{ "--kb": `${kbInset}px` } as CSSProperties}
           className={cn(
             "fixed z-50 focus:outline-none",
-            "inset-x-0 bottom-0 w-full pb-safe",
+            "inset-x-0 bottom-[var(--kb,0px)] w-full pb-safe transition-[bottom] duration-200",
             "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:w-full sm:max-w-[480px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:pb-0"
           )}
         >
