@@ -1,20 +1,31 @@
 /**
  * @component UpProvider
  * @description Context provider that manages Universal Profile (UP) wallet connections and state
- * for LUKSO blockchain interactions on Grid. It handles wallet connection status, account management, and chain
- * information while providing real-time updates through event listeners.
+ * for LUKSO blockchain interactions. It supports two runtime contexts:
+ *
+ * 1. Grid mini-app (inside an iframe on universaleverything.io): the provider comes from
+ *    `@lukso/up-provider` and the parent Grid page injects the connection. The mini-app can
+ *    NOT call `eth_requestAccounts` itself — it listens for `accountsChanged`.
+ * 2. Standalone (the site opened directly in a browser): the provider comes from the UP Browser
+ *    Extension (`window.lukso`, EIP-1193). Here we DO drive the connection ourselves via
+ *    `connect()` → `eth_requestAccounts`, which opens the extension's connect popup.
  *
  * @provides {UpProviderContext} Context containing:
- * - provider: UP-specific wallet provider instance
+ * - provider: active wallet provider instance (up-provider or injected extension)
  * - client: Viem wallet client for blockchain interactions
  * - chainId: Current blockchain network ID
  * - accounts: Array of connected wallet addresses
- * - contextAccounts: Array of Universal Profile accounts
+ * - contextAccounts: Array of Universal Profile accounts (Grid only)
  * - walletConnected: Boolean indicating active wallet connection
  * - selectedAddress: Currently selected address for transactions
  * - isSearching: Loading state indicator
  * - isMiniApp: Boolean indicating if running in mini-app context
  * - isLoading: Boolean indicating if the provider is loading
+ * - hasExtension: Boolean — UP Browser Extension detected (standalone connect available)
+ * - isConnecting: Boolean — a standalone connect request is in flight
+ * - connectError: Last standalone connect error message, if any
+ * - connect: Trigger the standalone extension connect popup
+ * - disconnect: Clear the local standalone connection
  */
 "use client";
 
@@ -23,6 +34,7 @@ import { createWalletClient, custom } from "viem";
 import { lukso, luksoTestnet } from "viem/chains";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -30,17 +42,25 @@ import {
   useMemo,
 } from "react";
 
+/** Minimal EIP-1193 shape for the injected UP Browser Extension provider. */
+interface InjectedProvider {
+  request: (args: { method: string; params?: unknown[] | object }) => Promise<unknown>;
+  on?: (event: string, handler: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
+  isUniversalProfileExtension?: boolean;
+}
+
+type ActiveProvider = UPClientProvider | InjectedProvider;
+
 declare global {
   interface Window {
-    lukso?: unknown;
-    ethereum?: {
-      isUniversalProfileExtension?: boolean;
-    };
+    lukso?: InjectedProvider;
+    ethereum?: InjectedProvider;
   }
 }
 
 interface UpProviderContext {
-  provider: UPClientProvider | null;
+  provider: ActiveProvider | null;
   client: ReturnType<typeof createWalletClient> | null;
   chainId: number;
   accounts: Array<`0x${string}`>;
@@ -52,6 +72,11 @@ interface UpProviderContext {
   setIsSearching: (isSearching: boolean) => void;
   isMiniApp: boolean;
   isLoading: boolean;
+  hasExtension: boolean;
+  isConnecting: boolean;
+  connectError: string | null;
+  connect: () => Promise<void>;
+  disconnect: () => void;
 }
 
 const UpContext = createContext<UpProviderContext | undefined>(undefined);
@@ -68,13 +93,43 @@ const isMiniAppContext = () => {
   try {
     const isInIframe = window.self !== window.top;
     debugLog('isMiniAppContext: window.self !== window.top:', isInIframe);
-    debugLog('isMiniAppContext: window.self:', window.self);
-    debugLog('isMiniAppContext: window.top:', window.top);
     return isInIframe;
   } catch (e) {
     debugLog('isMiniAppContext: Error accessing window.top, assuming iframe context:', e);
     return true;
   }
+};
+
+// Resolve the injected UP Browser Extension provider for standalone use.
+// Prefer the UP-specific `window.lukso`, fall back to a UP-flagged `window.ethereum`.
+const getInjectedProvider = (): InjectedProvider | null => {
+  if (typeof window === "undefined") return null;
+  if (window.lukso) return window.lukso;
+  if (window.ethereum?.isUniversalProfileExtension) return window.ethereum;
+  return null;
+};
+
+// Normalize a chainId returned as a number (up-provider) or hex string (extension).
+const toChainId = (value: unknown): number => {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return Number(value);
+  return 0;
+};
+
+// Read context accounts only when the active provider exposes them (Grid only).
+const readContextAccounts = (provider: ActiveProvider): Array<`0x${string}`> => {
+  const ctx = (provider as { contextAccounts?: Array<`0x${string}`> }).contextAccounts;
+  return Array.isArray(ctx) ? ctx : [];
+};
+
+// Turn a wallet/RPC error into a short, user-facing message.
+const toConnectError = (error: unknown): string => {
+  if (error && typeof error === "object" && "code" in error) {
+    // EIP-1193 user-rejected request.
+    if ((error as { code?: number }).code === 4001) return "Connection request rejected.";
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return "Failed to connect Universal Profile.";
 };
 
 const silenceLitDevWarnings = () => {
@@ -103,16 +158,25 @@ export function UpProvider({ children }: UpProviderProps) {
   const [chainId, setChainId] = useState<number>(0);
   const [accounts, setAccounts] = useState<Array<`0x${string}`>>([]);
   const [contextAccounts, setContextAccounts] = useState<Array<`0x${string}`>>([]);
-  const [walletConnected, setWalletConnected] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState<`0x${string}` | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isMiniApp, setIsMiniApp] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [provider, setProvider] = useState<UPClientProvider | null>(null);
+  const [provider, setProvider] = useState<ActiveProvider | null>(null);
+  const [hasExtension, setHasExtension] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [account] = accounts ?? [];
   const [contextAccount] = contextAccounts ?? [];
 
-  // Handle client-side detection of iframe context
+  // A UP is connected when we have an account. In the Grid we additionally require a
+  // context account (injected by the host); standalone has no context accounts.
+  const walletConnected = useMemo(
+    () => account != null && (isMiniApp ? contextAccount != null : true),
+    [account, contextAccount, isMiniApp]
+  );
+
+  // Handle client-side context detection: Grid mini-app vs standalone extension.
   useEffect(() => {
     let cancelled = false;
 
@@ -121,9 +185,9 @@ export function UpProvider({ children }: UpProviderProps) {
     debugLog('UpProvider: isMiniAppContext result:', miniAppContext);
     setIsMiniApp(miniAppContext);
     setIsLoading(false);
-    debugLog('UpProvider: Loading set to false');
 
     if (miniAppContext) {
+      // Grid mini-app: load the up-provider; the parent page injects the connection.
       silenceLitDevWarnings();
 
       import("@lukso/up-provider")
@@ -135,6 +199,26 @@ export function UpProvider({ children }: UpProviderProps) {
         .catch((error) => {
           console.error("Failed to load Universal Profile provider:", error);
         });
+    } else {
+      // Standalone: detect the UP Browser Extension and silently restore an
+      // already-authorized session (eth_accounts never opens a popup).
+      const injected = getInjectedProvider();
+      setHasExtension(Boolean(injected));
+
+      if (injected) {
+        injected
+          .request({ method: "eth_accounts", params: [] })
+          .then((result) => {
+            if (cancelled) return;
+            const restored = (result as Array<`0x${string}`>) ?? [];
+            if (restored.length > 0) {
+              setProvider(injected);
+            }
+          })
+          .catch(() => {
+            /* not yet authorized — wait for an explicit connect() */
+          });
+      }
     }
 
     // Fallback timeout to ensure loading doesn't get stuck
@@ -153,11 +237,46 @@ export function UpProvider({ children }: UpProviderProps) {
     if (provider && chainId) {
       return createWalletClient({
         chain: chainId === 42 ? lukso : luksoTestnet,
-        transport: custom(provider),
+        transport: custom(provider as Parameters<typeof custom>[0]),
       });
     }
     return null;
   }, [chainId, provider]);
+
+  // Open the UP Browser Extension connect popup (standalone only).
+  const connect = useCallback(async () => {
+    const injected = getInjectedProvider();
+    if (!injected) {
+      setHasExtension(false);
+      setConnectError("No Universal Profile extension detected.");
+      return;
+    }
+
+    setIsConnecting(true);
+    setConnectError(null);
+    try {
+      const result = await injected.request({ method: "eth_requestAccounts", params: [] });
+      const granted = (result as Array<`0x${string}`>) ?? [];
+      setProvider(injected);
+      if (granted.length > 0) {
+        setAccounts(granted);
+      }
+    } catch (error) {
+      setConnectError(toConnectError(error));
+    } finally {
+      setIsConnecting(false);
+    }
+  }, []);
+
+  // Local disconnect. EIP-1193 has no reliable dApp-initiated revoke, so this clears
+  // our session; the extension keeps the grant, making reconnect a single click.
+  const disconnect = useCallback(() => {
+    setProvider(null);
+    setAccounts([]);
+    setContextAccounts([]);
+    setSelectedAddress(null);
+    setConnectError(null);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -166,21 +285,20 @@ export function UpProvider({ children }: UpProviderProps) {
       try {
         if (!provider) return;
 
-        const _accounts = (await provider.request(
-          "eth_accounts",
-          []
-        )) as Array<`0x${string}`>;
+        const _accounts = (await provider.request({
+          method: "eth_accounts",
+          params: [],
+        })) as Array<`0x${string}`>;
         if (!mounted) return;
-        setAccounts(_accounts);
+        setAccounts(_accounts ?? []);
 
-        const _chainId = (await provider.request("eth_chainId")) as number;
+        const _chainId = await provider.request({ method: "eth_chainId" });
         if (!mounted) return;
-        setChainId(_chainId);
+        setChainId(toChainId(_chainId));
 
-        const _contextAccounts = provider.contextAccounts;
+        const _contextAccounts = readContextAccounts(provider);
         if (!mounted) return;
         setContextAccounts(_contextAccounts);
-        setWalletConnected(_accounts[0] != null && _contextAccounts[0] != null);
       } catch (error) {
         if (error instanceof Error && error.message.includes("No UP found")) {
           return;
@@ -192,35 +310,30 @@ export function UpProvider({ children }: UpProviderProps) {
     init();
 
     if (provider) {
-      const accountsChanged = (_accounts: Array<`0x${string}`>) => {
-        setAccounts(_accounts);
-        setWalletConnected(_accounts[0] != null && contextAccount != null);
+      const accountsChanged = (..._args: unknown[]) => {
+        setAccounts((_args[0] as Array<`0x${string}`>) ?? []);
       };
 
-      const contextAccountsChanged = (_accounts: Array<`0x${string}`>) => {
-        setContextAccounts(_accounts);
-        setWalletConnected(account != null && _accounts[0] != null);
+      const contextAccountsChanged = (..._args: unknown[]) => {
+        setContextAccounts((_args[0] as Array<`0x${string}`>) ?? []);
       };
 
-      const chainChanged = (_chainId: number) => {
-        setChainId(_chainId);
+      const chainChanged = (..._args: unknown[]) => {
+        setChainId(toChainId(_args[0]));
       };
 
-      provider.on("accountsChanged", accountsChanged);
-      provider.on("chainChanged", chainChanged);
-      provider.on("contextAccountsChanged", contextAccountsChanged);
+      provider.on?.("accountsChanged", accountsChanged);
+      provider.on?.("chainChanged", chainChanged);
+      provider.on?.("contextAccountsChanged", contextAccountsChanged);
 
       return () => {
         mounted = false;
-        provider.removeListener("accountsChanged", accountsChanged);
-        provider.removeListener(
-          "contextAccountsChanged",
-          contextAccountsChanged
-        );
-        provider.removeListener("chainChanged", chainChanged);
+        provider.removeListener?.("accountsChanged", accountsChanged);
+        provider.removeListener?.("contextAccountsChanged", contextAccountsChanged);
+        provider.removeListener?.("chainChanged", chainChanged);
       };
     }
-  }, [account, contextAccount, provider]);
+  }, [provider]);
 
   const data = useMemo(() => {
     return {
@@ -236,6 +349,11 @@ export function UpProvider({ children }: UpProviderProps) {
       setIsSearching,
       isMiniApp,
       isLoading,
+      hasExtension,
+      isConnecting,
+      connectError,
+      connect,
+      disconnect,
     };
   }, [
     client,
@@ -248,6 +366,11 @@ export function UpProvider({ children }: UpProviderProps) {
     isMiniApp,
     isLoading,
     provider,
+    hasExtension,
+    isConnecting,
+    connectError,
+    connect,
+    disconnect,
   ]);
 
   return (

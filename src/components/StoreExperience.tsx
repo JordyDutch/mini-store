@@ -1,17 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import { Compass } from "lucide-react";
 
-import { useUpProvider } from "@/app/components/providers/upProvider";
-import { useProfile } from "@/app/components/providers/profileProvider";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Wordmark } from "@/components/Wordmark";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import UpConnect from "@/components/UpConnect";
 import Footer from "@/components/Footer";
 import NavSwitch from "@/components/NavSwitch";
 import ExplorePage from "@/components/ExplorePage";
@@ -38,8 +35,6 @@ const STORE_LINK = { href: "/store", label: "Search" };
 
 export default function StoreExperience({ variant = "auto" }: StoreExperienceProps) {
   const router = useRouter();
-  const { walletConnected } = useUpProvider();
-  const { profileData } = useProfile();
   const prefersReducedMotion = useReducedMotion();
 
   const [activeTab, setActiveTab] = useState<Tab>("explore");
@@ -145,38 +140,8 @@ export default function StoreExperience({ variant = "auto" }: StoreExperiencePro
 
             <ThemeToggle />
 
-            {/* Connection-aware slot */}
-            {walletConnected && profileData ? (
-              <span className="glass inline-flex h-10 min-h-[44px] items-center gap-2 rounded-full px-2 pr-3">
-                <Avatar className="h-7 w-7">
-                  <AvatarImage
-                    src={profileData?.profileImages?.[0]?.url || ""}
-                    alt={profileData?.name || "Universal Profile"}
-                  />
-                  <AvatarFallback className="bg-transparent p-0">
-                  <Image
-                    src="/up-logo.png"
-                    alt="UP!"
-                    width={28}
-                    height={28}
-                    className="h-full w-full object-cover"
-                  />
-                </AvatarFallback>
-                </Avatar>
-                <span className="hidden max-w-[120px] truncate text-sm font-medium text-foreground sm:inline">
-                  {profileData?.name || "Profile"}
-                </span>
-              </span>
-            ) : (
-              <a
-                href="https://universaleverything.io"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden text-sm font-medium text-text-secondary transition-colors hover:text-foreground sm:inline-flex sm:items-center sm:min-h-[44px]"
-              >
-                Open in Universal Profile
-              </a>
-            )}
+            {/* Connection-aware slot: connect modal / profile pill */}
+            <UpConnect />
           </div>
         </div>
 

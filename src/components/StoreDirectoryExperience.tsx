@@ -1,19 +1,16 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Compass, Search } from "lucide-react";
 
-import { useProfile } from "@/app/components/providers/profileProvider";
-import { useUpProvider } from "@/app/components/providers/upProvider";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import AppDetailPage from "@/components/AppDetailPage";
 import NavSwitch from "@/components/NavSwitch";
 import SearchPage from "@/components/SearchPage";
 import Footer from "@/components/Footer";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import UpConnect from "@/components/UpConnect";
 import { Wordmark } from "@/components/Wordmark";
 import { apps, type App } from "@/data/appCatalog";
 
@@ -64,9 +61,6 @@ export default function StoreDirectoryExperience({ initialAppId }: StoreDirector
 }
 
 function StoreNavbar() {
-  const { walletConnected } = useUpProvider();
-  const { profileData } = useProfile();
-
   return (
     <header className="glass-nav sticky top-0 z-40 pt-safe">
       <div className="mx-auto flex h-[52px] w-full max-w-[1200px] items-center justify-between px-4 md:h-16 md:px-6">
@@ -98,37 +92,7 @@ function StoreNavbar() {
 
           <ThemeToggle />
 
-          {walletConnected && profileData ? (
-            <span className="glass inline-flex h-10 min-h-[44px] items-center gap-2 rounded-full px-2 pr-3">
-              <Avatar className="h-7 w-7">
-                <AvatarImage
-                  src={profileData?.profileImages?.[0]?.url || ""}
-                  alt={profileData?.name || "Universal Profile"}
-                />
-                <AvatarFallback className="bg-transparent p-0">
-                  <Image
-                    src="/up-logo.png"
-                    alt="UP!"
-                    width={28}
-                    height={28}
-                    className="h-full w-full object-cover"
-                  />
-                </AvatarFallback>
-              </Avatar>
-              <span className="hidden max-w-[120px] truncate text-sm font-medium text-foreground sm:inline">
-                {profileData?.name || "Profile"}
-              </span>
-            </span>
-          ) : (
-            <a
-              href="https://universaleverything.io"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden text-sm font-medium text-text-secondary transition-colors hover:text-foreground sm:inline-flex sm:min-h-[44px] sm:items-center"
-            >
-              Open in Universal Profile
-            </a>
-          )}
+          <UpConnect />
         </div>
       </div>
 
