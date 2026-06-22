@@ -26,7 +26,9 @@ import {
 } from "@/lib/bookmarks";
 import type { App } from "@/data/appCatalog";
 
-const RPC_ENDPOINT = "https://42.rpc.thirdweb.com";
+// Official LUKSO mainnet RPC — CORS-enabled for browsers. (thirdweb's RPC blocks
+// cross-origin reads, which broke on-chain reads in production.)
+const RPC_ENDPOINT = "https://rpc.mainnet.lukso.network";
 const IPFS_GATEWAY = "https://api.universalprofile.cloud/ipfs";
 
 type ToastOptions = Parameters<typeof toast>[1];

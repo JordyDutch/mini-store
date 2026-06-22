@@ -201,10 +201,11 @@ export default function AddBookmarkDialog({
         <DialogPrimitive.Content
           aria-describedby={undefined}
           // Focus the input on open (not the close button) so the user can type
-          // immediately.
+          // immediately — but WITHOUT scrolling: the dialog is a bottom sheet on
+          // mobile, and a default focus scroll yanks the page down to it.
           onOpenAutoFocus={(e) => {
             e.preventDefault();
-            inputRef.current?.focus();
+            inputRef.current?.focus({ preventScroll: true });
           }}
           className={cn(
             "fixed z-50 focus:outline-none",

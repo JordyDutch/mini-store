@@ -3,7 +3,9 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useUpProvider } from "./upProvider";
 
-const RPC_ENDPOINT = 'https://42.rpc.thirdweb.com';
+// Official LUKSO mainnet RPC — CORS-enabled for browsers. (thirdweb's RPC blocks
+// cross-origin reads, which broke on-chain reads in production.)
+const RPC_ENDPOINT = 'https://rpc.mainnet.lukso.network';
 const IPFS_GATEWAY = 'https://api.universalprofile.cloud/ipfs';
 
 // Define LSP28TheGrid schema locally
