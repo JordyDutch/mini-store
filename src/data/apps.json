@@ -15,8 +15,7 @@
       2
     ],
     "screenshots": 5,
-    "featured": true,
-    "featuredTitle": "Send Tokens & NFTs"
+    "featured": false
   },
   "stakingverse-staking": {
     "name": "Stakingverse: Stake Your LYX",
@@ -67,7 +66,7 @@
       1
     ],
     "screenshots": 6,
-    "featured": true
+    "featured": false
   },
   "aratta-labs-draco": {
     "name": "Dracos: Swipe & Mint",
@@ -82,7 +81,7 @@
       2
     ],
     "screenshots": 2,
-    "featured": true
+    "featured": false
   },
   "aratta-labs-pigmint": {
     "name": "Pigmint: Mint Your Mood",
@@ -98,7 +97,7 @@
       2
     ],
     "screenshots": 3,
-    "featured": true
+    "featured": false
   },
   "deliquified-notes": {
     "name": "Notes: Take Notes Privately",
@@ -114,7 +113,7 @@
       2
     ],
     "screenshots": 2,
-    "featured": true
+    "featured": false
   },
   "universal-profiles-mobile": {
     "name": "Universal Profiles Mobile: Your Web3 Identity",
