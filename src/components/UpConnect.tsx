@@ -25,7 +25,6 @@ import {
 
 const UP_EXTENSION_URL =
   "https://chromewebstore.google.com/detail/universal-profiles/abpickdkkbnbcoepogfhkhennhfhehfn";
-const UNIVERSAL_EVERYTHING_URL = "https://universaleverything.io";
 
 /**
  * Connection control for the header. Renders, by context:
@@ -87,7 +86,7 @@ function ProfilePill({ isMiniApp }: { isMiniApp: boolean }) {
         />
         <AvatarFallback className="bg-transparent p-0">
           <Image
-            src="/up-logo.png"
+            src="/brand/cart-favicon.png"
             alt="UP!"
             width={28}
             height={28}
@@ -147,7 +146,7 @@ function ConnectModal({
       <DialogContent className="max-w-sm rounded-2xl">
         <DialogHeader className="items-center text-center sm:text-center">
           <Image
-            src="/up-logo.png"
+            src="/brand/cart-favicon.png"
             alt="Universal Profile"
             width={48}
             height={48}
@@ -187,17 +186,6 @@ function ConnectModal({
               </a>
             </Button>
           )}
-
-          <Button asChild variant="ghost-outline" size="pill">
-            <a
-              href={UNIVERSAL_EVERYTHING_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Open in Universal Everything
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
 
           {connectError && (
             <p className="mt-1 text-center text-sm text-destructive">{connectError}</p>

@@ -11,7 +11,16 @@ export const uploadMetadataToIPFS = async (metadata: any) => {
       });
   
       if (!response.ok) {
-        throw new Error('Failed to upload metadata to IPFS');
+        // Surface the real server-side reason (e.g. 403 missing pinning scope)
+        // instead of an opaque failure, so console/toast point at the fix.
+        let detail = ` (${response.status})`;
+        try {
+          const err = await response.json();
+          if (err?.error) detail = ` (${response.status}: ${err.error})`;
+        } catch {
+          /* non-JSON error body — keep the status-only detail */
+        }
+        throw new Error(`Failed to upload metadata to IPFS${detail}`);
       }
   
       const ipfsUrl = await response.json();

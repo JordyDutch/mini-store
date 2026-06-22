@@ -122,14 +122,38 @@ const readContextAccounts = (provider: ActiveProvider): Array<`0x${string}`> => 
   return Array.isArray(ctx) ? ctx : [];
 };
 
-// Turn a wallet/RPC error into a short, user-facing message.
+// Known EIP-1193 / JSON-RPC provider error codes mapped to actionable messages.
+const EIP1193_MESSAGES: Record<number, string> = {
+  4001: "You rejected the connection request in the Universal Profile extension.",
+  4100: "This action isn't authorized — unlock the Universal Profile extension and try again.",
+  4900: "The Universal Profile extension is disconnected.",
+  4901: "The Universal Profile extension isn't connected to the LUKSO network.",
+  [-32002]:
+    "A connection request is already open — check the Universal Profile extension to approve it.",
+  [-32603]: "The Universal Profile extension reported an internal error. Please try again.",
+};
+
+// Turn a wallet/RPC error into a precise, user-facing message: prefer a known
+// EIP-1193 code, else the provider's own message, with the raw code appended for
+// diagnosis. Only falls back to a generic line when nothing is available.
 const toConnectError = (error: unknown): string => {
-  if (error && typeof error === "object" && "code" in error) {
-    // EIP-1193 user-rejected request.
-    if ((error as { code?: number }).code === 4001) return "Connection request rejected.";
-  }
-  if (error instanceof Error && error.message) return error.message;
-  return "Failed to connect Universal Profile.";
+  const e = (error ?? {}) as {
+    code?: number;
+    message?: string;
+    data?: { message?: string };
+    cause?: { message?: string };
+  };
+  const code = typeof e.code === "number" ? e.code : undefined;
+  if (code !== undefined && EIP1193_MESSAGES[code]) return EIP1193_MESSAGES[code];
+
+  const detail =
+    e.data?.message ||
+    (error instanceof Error ? error.message : e.message) ||
+    e.cause?.message ||
+    "";
+  if (detail) return code !== undefined ? `${detail} (code ${code})` : detail;
+
+  return "Couldn't connect to your Universal Profile. Make sure the extension is installed and unlocked, then try again.";
 };
 
 const silenceLitDevWarnings = () => {

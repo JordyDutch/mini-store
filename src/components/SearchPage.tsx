@@ -27,6 +27,8 @@ import {
 
 import { useGrid } from "@/app/components/providers/gridProvider";
 import { Button } from "@/components/ui/button";
+import BookmarkButton from "@/components/BookmarkButton";
+import { buildAppBookmark } from "@/lib/bookmarks";
 import GridSelectionDialog from "@/components/GridSelectionDialog";
 import { useAppLaunch } from "@/hooks/useAppLaunch";
 import { cn } from "@/lib/utils";
@@ -319,8 +321,8 @@ function DirectoryAppRow({
   const developer = app.developer || app.publisherProfile;
 
   return (
-    <li className="rounded-lg border border-border bg-card shadow-rest transition hover:shadow-hover">
-      <div className="grid min-h-[76px] grid-cols-[52px_minmax(0,1fr)_40px] items-center gap-3 p-2.5 sm:grid-cols-[52px_minmax(0,1fr)_auto]">
+    <li className="relative rounded-lg border border-border bg-card shadow-rest transition hover:shadow-hover">
+      <div className="grid min-h-[76px] grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-3 p-2.5">
         <button
           type="button"
           onClick={() => onAppClick(app)}
@@ -369,20 +371,25 @@ function DirectoryAppRow({
           </span>
         </button>
 
-        <Button
-          type="button"
-          variant="ghost-outline"
-          size="pill"
-          className="h-10 min-h-10 w-10 shrink-0 px-0 text-[13px] sm:w-auto sm:px-3"
-          aria-label={`Open: ${app.app.name}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            openApp(app);
-          }}
-        >
-          <ExternalLink className="h-4 w-4" aria-hidden="true" />
-          <span className="hidden sm:inline">Open</span>
-        </Button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <BookmarkButton
+            bookmark={buildAppBookmark(app)}
+            className="h-9 w-9"
+          />
+          <Button
+            type="button"
+            variant="ghost-outline"
+            size="pill"
+            className="h-10 min-h-10 w-10 shrink-0 px-0"
+            aria-label={`Open: ${app.app.name}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              openApp(app);
+            }}
+          >
+            <ExternalLink className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
       </div>
     </li>
   );

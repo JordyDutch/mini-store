@@ -69,8 +69,9 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    icon: "/up-logo.png",
-    apple: "/up-logo.png",
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/brand/cart-favicon.png",
   },
 };
 
@@ -99,7 +100,7 @@ const siteJsonLd = {
       "@id": `${siteUrl}/#organization`,
       name: "LUKSO UP!Store",
       url: siteUrl,
-      logo: `${siteUrl}/up-logo.png`,
+      logo: `${siteUrl}/brand/upstore-wordmark.webp`,
     },
     {
       "@type": "WebSite",

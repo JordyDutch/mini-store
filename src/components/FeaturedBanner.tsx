@@ -21,6 +21,8 @@ import { useAppLaunch } from "@/hooks/useAppLaunch";
 import { useGrid } from "@/app/components/providers/gridProvider";
 import { cn } from "@/lib/utils";
 import GridSelectionDialog from "./GridSelectionDialog";
+import BookmarkButton from "@/components/BookmarkButton";
+import { buildAppBookmark } from "@/lib/bookmarks";
 
 const AUTOPLAY_DWELL_MS = 6500;
 
@@ -168,6 +170,12 @@ export default function FeaturedBanner({
                     onClick={() => onAppClick(app)}
                     aria-label={`View details for ${app.title}`}
                     className="absolute inset-0 z-10 w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-inset"
+                  />
+
+                  <BookmarkButton
+                    bookmark={buildAppBookmark(app)}
+                    onMedia
+                    className="absolute right-4 top-4 z-30"
                   />
 
                   <div className="pointer-events-none relative z-20 flex h-full w-full flex-col justify-end gap-5 p-6 text-left sm:p-8">

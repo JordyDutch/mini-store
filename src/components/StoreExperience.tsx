@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
-import { Compass } from "lucide-react";
+import { Compass, Bookmark } from "lucide-react";
 
 import { Wordmark } from "@/components/Wordmark";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -137,6 +137,14 @@ export default function StoreExperience({ variant = "auto" }: StoreExperiencePro
                 {STORE_LINK.label}
               </Link>
             </nav>
+
+            <Link
+              href="/bookmarks"
+              aria-label="Bookmarks"
+              className="relative inline-flex h-11 min-h-[44px] w-11 items-center justify-center rounded-full text-text-secondary transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+            >
+              <Bookmark className="h-5 w-5" aria-hidden />
+            </Link>
 
             <ThemeToggle />
 
