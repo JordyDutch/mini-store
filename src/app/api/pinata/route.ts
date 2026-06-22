@@ -63,7 +63,10 @@ export async function POST(request: NextRequest) {
       ? `https://${gateway}/ipfs/${cid}`
       : `https://gateway.pinata.cloud/ipfs/${cid}`;
 
-    return NextResponse.json(url, { status: 200 });
+    // Return the bare CID alongside the gateway URL. Callers build the on-chain
+    // VerifiableURI from `cid` directly — never by string-splitting `url`, which
+    // breaks on subdomain/CIDv1 gateways and could encode `ipfs://undefined`.
+    return NextResponse.json({ cid, url }, { status: 200 });
   } catch (e: any) {
     // Surface the real error server-side and return a non-sensitive message.
     console.error("Pinata route error", {

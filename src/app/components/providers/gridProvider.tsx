@@ -59,6 +59,13 @@ interface GridData {
   sections: GridSection[];
   isLoading: boolean;
   error: string | null;
+  /**
+   * True only after the connected profile's on-chain grid has been read
+   * successfully (including the "genuinely empty" case). Writers MUST gate on
+   * this so an install/uninstall never merges onto a not-yet-loaded baseline and
+   * overwrites the real on-chain grid with an empty one.
+   */
+  isLoaded: boolean;
   setSections: (sections: GridSection[]) => void;
 }
 
@@ -86,99 +93,105 @@ export function GridProvider({ children }: { children: ReactNode }) {
   const [sections, setSections] = useState<GridSection[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchGridData() {
       if (!walletConnected || !accounts[0]) {
-        console.log('GridProvider: Not fetching - walletConnected:', walletConnected, 'accounts:', accounts);
+        // Disconnected: reset to a not-yet-loaded baseline so a stale grid from a
+        // previous profile can never be written back under a new connection.
+        setSections([]);
+        setIsLoaded(false);
+        setError(null);
+        setIsLoading(false);
         return;
       }
 
-      console.log('GridProvider: Starting fetch for account:', accounts[0]);
       setIsLoading(true);
       setError(null);
+      // New account (or first load): gate writes until THIS profile's grid loads.
+      setIsLoaded(false);
 
       try {
         const { ERC725 } = await import('@erc725/erc725.js');
-
-        // Create ERC725 instance
         const erc725js = new ERC725(
-          lsp28schema, 
-          accounts[0], 
-          RPC_ENDPOINT, 
+          lsp28schema,
+          accounts[0],
+          RPC_ENDPOINT,
           { ipfsGateway: IPFS_GATEWAY }
         );
 
-        // Fetch LSP28TheGrid data
         const fetchedData = await erc725js.getData('LSP28TheGrid');
-        console.log('GridProvider: Fetched raw data:', fetchedData);
+        if (cancelled) return;
 
-        if (fetchedData && fetchedData.value) {
-          // Check if value is a VerifiableURI object
-          const value = fetchedData.value as VerifiableURI;
-          console.log('GridProvider: Processed value:', value);
-          
-          // For VerifiableURI content, the value contains a URL to the grid data
-          // We need to fetch the actual data from the URL
-          if (value.url && typeof value.url === 'string' && value.url.startsWith('ipfs://')) {
-            const ipfsHash = value.url.replace('ipfs://', '');
-            const ipfsUrl = `${IPFS_GATEWAY}/${ipfsHash}`;
-            console.log('GridProvider: Fetching from IPFS URL:', ipfsUrl);
-            
-            const response = await fetch(ipfsUrl);
-            if (!response.ok) {
-              throw new Error(`Failed to fetch grid data from IPFS: ${response.status} ${response.statusText}`);
-            }
-            
-            const gridData = await response.json();
-            console.log('GridProvider: Grid data from IPFS:', gridData);
-            
-            // Check if gridData is an array (for backward compatibility)
-            if (Array.isArray(gridData)) {
-              console.log('GridProvider: Setting sections from array:', gridData);
-              setSections(gridData);
-            } 
-            // Or if it has LSP28TheGrid property
-            else if (gridData && gridData.LSP28TheGrid) {
-              const theGrid = gridData.LSP28TheGrid;
-              console.log('GridProvider: Found LSP28TheGrid property:', theGrid);
-              // Check if LSP28TheGrid is an array or a single section
-              if (Array.isArray(theGrid)) {
-                console.log('GridProvider: Setting sections from LSP28TheGrid array:', theGrid);
-                setSections(theGrid);
-              } else {
-                console.log('GridProvider: Setting sections from single LSP28TheGrid object:', [theGrid]);
-                setSections([theGrid]);
-              }
-            } else {
-              console.error('GridProvider: Invalid grid data format:', gridData);
-              setError('Invalid grid data format');
-              setSections([]);
-            }
-          } else {
-            console.error('GridProvider: Invalid or missing IPFS URL:', value);
-            setError('Invalid IPFS URL in grid data');
-            setSections([]);
-          }
-        } else {
-          console.log('GridProvider: No grid data found in response');
-          setError('No grid data found');
+        // Genuinely empty on-chain (new user, nothing stored) — the ONLY case
+        // where an empty grid is the real state. Mark loaded so the first install
+        // can write.
+        if (!fetchedData || !fetchedData.value) {
           setSections([]);
+          setIsLoaded(true);
+          return;
+        }
+
+        const value = fetchedData.value as VerifiableURI;
+        if (
+          !value.url ||
+          typeof value.url !== 'string' ||
+          !value.url.startsWith('ipfs://')
+        ) {
+          // Malformed on-chain value: a load failure, NOT an empty grid. Falls
+          // through to catch so we never clobber a grid we might write back.
+          throw new Error('Invalid or missing IPFS URL in grid data');
+        }
+
+        const ipfsHash = value.url.replace('ipfs://', '');
+        const response = await fetch(`${IPFS_GATEWAY}/${ipfsHash}`);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch grid data from IPFS: ${response.status} ${response.statusText}`
+          );
+        }
+
+        const gridData = await response.json();
+        if (cancelled) return;
+
+        // Accept a bare array (legacy) or the { LSP28TheGrid } envelope.
+        if (Array.isArray(gridData)) {
+          setSections(gridData);
+          setIsLoaded(true);
+        } else if (gridData && gridData.LSP28TheGrid) {
+          const theGrid = gridData.LSP28TheGrid;
+          setSections(Array.isArray(theGrid) ? theGrid : [theGrid]);
+          setIsLoaded(true);
+        } else {
+          // Unparseable payload — treat as a load failure, not an empty grid.
+          throw new Error('Invalid grid data format');
         }
       } catch (err) {
+        if (cancelled) return;
         console.error('GridProvider: Error fetching grid data:', err);
+        // Preserve whatever sections we already have so a transient gateway/RPC
+        // hiccup can never wipe the grid and then get written back as empty.
+        // isLoaded stays false, so installs/uninstalls remain gated until a clean
+        // load — preventing the empty-grid overwrite.
         setError('Failed to load grid data');
-        setSections([]);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
 
     fetchGridData();
-  }, [walletConnected, accounts]);
+    return () => {
+      cancelled = true;
+    };
+    // Depend on the address (accounts[0]) rather than the array reference so a
+    // new array instance from upProvider doesn't trigger a needless re-fetch.
+  }, [walletConnected, accounts[0]]);
 
   return (
-    <GridContext.Provider value={{ sections, isLoading, error, setSections }}>
+    <GridContext.Provider value={{ sections, isLoading, error, isLoaded, setSections }}>
       {children}
     </GridContext.Provider>
   );

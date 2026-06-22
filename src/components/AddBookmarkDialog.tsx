@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { motion, useReducedMotion, type Transition } from "framer-motion";
 import { Bookmark as BookmarkIcon, Loader2, User, X } from "lucide-react";
@@ -67,6 +67,7 @@ export default function AddBookmarkDialog({
   const reduceMotion = useReducedMotion();
   const { addBookmark, isBookmarked, isSaving } = useBookmarks();
 
+  const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
   const [title, setTitle] = useState("");
   const [resolvedIcon, setResolvedIcon] = useState<string | undefined>(
@@ -199,6 +200,12 @@ export default function AddBookmarkDialog({
 
         <DialogPrimitive.Content
           aria-describedby={undefined}
+          // Focus the input on open (not the close button) so the user can type
+          // immediately.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            inputRef.current?.focus();
+          }}
           className={cn(
             "fixed z-50 focus:outline-none",
             "inset-x-0 bottom-0 w-full pb-safe",
@@ -256,6 +263,7 @@ export default function AddBookmarkDialog({
                     Search a name, or paste a URL / 0x address
                   </label>
                   <Input
+                    ref={inputRef}
                     id="bookmark-value"
                     value={value}
                     onChange={(e) => setValue(e.target.value)}

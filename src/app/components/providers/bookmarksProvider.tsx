@@ -345,7 +345,7 @@ export function BookmarksProvider({ children }: { children: ReactNode }) {
       const merged = Array.from(map.values());
 
       const envelope = buildBookmarksEnvelope(merged);
-      const metadataIpfsUrl = await uploadMetadataToIPFS(envelope);
+      const { cid } = await uploadMetadataToIPFS(envelope);
 
       const { ERC725 } = await import("@erc725/erc725.js");
       const erc725 = new ERC725(
@@ -357,7 +357,7 @@ export function BookmarksProvider({ children }: { children: ReactNode }) {
           keyName: "UPStoreBookmarks",
           value: {
             json: envelope,
-            url: `ipfs://${metadataIpfsUrl.split("/ipfs/")[1]}`,
+            url: `ipfs://${cid}`,
           },
         },
       ]);
