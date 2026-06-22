@@ -8,7 +8,7 @@ import { App, AppWidget } from "@/data/appCatalog";
 import { uploadMetadataToIPFS } from './uploadMetadata';
 
 export function useInstallApp() {
-  const { sections, setSections } = useGrid();
+  const { sections, setSections, isLoaded } = useGrid();
   const { accounts, client: upClient } = useUpProvider();
   const [isInstalling, setIsInstalling] = useState(false);
   const [isUninstalling, setIsUninstalling] = useState(false);
@@ -35,6 +35,24 @@ export function useInstallApp() {
     );
   };
 
+  // Block grid writes until the connected profile's on-chain grid has loaded.
+  // Acting on a stale / not-yet-loaded `sections` would both misreport install
+  // state and risk overwriting the real on-chain grid with an empty one.
+  // Returns true (and toasts) when the grid is NOT ready yet.
+  const blockIfGridNotLoaded = () => {
+    if (isLoaded) return false;
+    toast("Your grid is still loading — please try again in a moment", {
+      duration: 3000,
+      position: "bottom-center",
+      style: {
+        background: "#303030",
+        color: "#f0f0f0",
+        border: "1px solid #303030"
+      }
+    });
+    return true;
+  };
+
   const handleInstall = async (app: App, widget: AppWidget | null = null) => {
     // Check if user is connected
     if (!accounts || accounts.length === 0 || !upClient) {
@@ -49,6 +67,8 @@ export function useInstallApp() {
       });
       return;
     }
+
+    if (blockIfGridNotLoaded()) return;
 
     if (checkIfInstalled(app, widget)) {
       toast(`${targetName(app, widget)} is already installed`, {
@@ -74,6 +94,8 @@ export function useInstallApp() {
     gridIndex: number,
     widget: AppWidget | null = null
   ) => {
+    // Defense in depth: never build a write from a not-yet-loaded baseline.
+    if (blockIfGridNotLoaded()) return;
     setIsInstalling(true);
 
     const url = targetUrl(app, widget);
@@ -103,7 +125,7 @@ export function useInstallApp() {
       };
 
       // Upload updated metadata to IPFS
-      const metadataIpfsUrl = await uploadMetadataToIPFS(gridData);
+      const { cid } = await uploadMetadataToIPFS(gridData);
 
       // Encode the data with LSP28TheGrid schema
       const schema = [{
@@ -122,7 +144,7 @@ export function useInstallApp() {
         keyName: 'LSP28TheGrid',
         value: {
           json: gridData,
-          url: `ipfs://${metadataIpfsUrl.split('/ipfs/')[1]}`,
+          url: `ipfs://${cid}`,
         },
       }]);
 
@@ -223,6 +245,8 @@ export function useInstallApp() {
       return;
     }
 
+    if (blockIfGridNotLoaded()) return;
+
     setIsUninstalling(true);
 
     try {
@@ -244,7 +268,7 @@ export function useInstallApp() {
       };
 
       // Upload updated metadata to IPFS
-      const metadataIpfsUrl = await uploadMetadataToIPFS(gridData);
+      const { cid } = await uploadMetadataToIPFS(gridData);
 
       // Encode the data with LSP28TheGrid schema
       const schema = [{
@@ -263,7 +287,7 @@ export function useInstallApp() {
         keyName: 'LSP28TheGrid',
         value: {
           json: gridData,
-          url: `ipfs://${metadataIpfsUrl.split('/ipfs/')[1]}`,
+          url: `ipfs://${cid}`,
         },
       }]);
 

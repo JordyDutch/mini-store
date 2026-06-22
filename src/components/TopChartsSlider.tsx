@@ -11,6 +11,8 @@ import {
   getPrimaryCategory,
   sortByOpenCount,
 } from "@/data/appCatalog";
+import BookmarkButton from "@/components/BookmarkButton";
+import { buildAppBookmark } from "@/lib/bookmarks";
 
 interface TopChartsSliderProps {
   apps: App[];
@@ -158,6 +160,7 @@ export default function TopChartsSlider({
               return (
                 <motion.li
                   key={app.id}
+                  className="relative"
                   initial={reduceMotion ? false : { opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={
@@ -223,6 +226,10 @@ export default function TopChartsSlider({
                       className="h-5 w-5 flex-shrink-0 text-text-tertiary transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-text-secondary"
                     />
                   </button>
+                  <BookmarkButton
+                    bookmark={buildAppBookmark(app)}
+                    className="absolute right-11 top-1/2 z-10 -translate-y-1/2 sm:right-12"
+                  />
                 </motion.li>
               );
             })}

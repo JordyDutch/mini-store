@@ -60,8 +60,7 @@ function DiscoverSection({
     <motion.section
       variants={variants}
       initial="hidden"
-      whileInView="visible"
-      viewport={{ once: true, amount: 0.18 }}
+      animate="visible"
       className="scroll-mt-24"
     >
       {/* Section header — the single source of eyebrow + title + See all */}

@@ -6,6 +6,8 @@ import { ArrowLeft, ExternalLink, Loader2, Plus, Search } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { App, getAppsByCategory, getPrimaryCategory, Category } from "../data/appCatalog";
 import GridSelectionDialog from "./GridSelectionDialog";
+import BookmarkButton from "@/components/BookmarkButton";
+import { buildAppBookmark } from "@/lib/bookmarks";
 import { useAppLaunch } from "@/hooks/useAppLaunch";
 import { useGrid } from "@/app/components/providers/gridProvider";
 
@@ -128,7 +130,7 @@ export default function CategoryDetail({ category, onBack, onAppClick }: Categor
                       }
                     }}
                     aria-label={`View ${app.app.name}`}
-                    className="group flex cursor-pointer items-center gap-4 rounded-lg border border-border bg-card p-3 shadow-rest transition
+                    className="group relative flex cursor-pointer items-center gap-4 rounded-lg border border-border bg-card p-3 shadow-rest transition
                       hover:-translate-y-0.5 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2
                       focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-4"
                   >
@@ -196,6 +198,10 @@ export default function CategoryDetail({ category, onBack, onAppClick }: Categor
                         </>
                       )}
                     </button>
+                    <BookmarkButton
+                      bookmark={buildAppBookmark(app)}
+                      className="h-9 w-9 flex-shrink-0"
+                    />
                   </div>
                 </motion.li>
               );

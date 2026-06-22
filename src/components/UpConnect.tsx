@@ -1,20 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Image from "next/image";
-import { ExternalLink, Loader2, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 
 import { useUpProvider } from "@/app/components/providers/upProvider";
 import { useProfile } from "@/app/components/providers/profileProvider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,48 +15,40 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const UP_EXTENSION_URL =
-  "https://chromewebstore.google.com/detail/universal-profiles/abpickdkkbnbcoepogfhkhennhfhehfn";
-const UNIVERSAL_EVERYTHING_URL = "https://universaleverything.io";
-
 /**
  * Connection control for the header. Renders, by context:
  * - connected (Grid or standalone) → the Universal Profile pill (with a disconnect
  *   menu when standalone, since the Grid host owns the connection there);
- * - standalone, disconnected → a "Connect" button that opens the connect modal;
+ * - standalone, disconnected → a "Connect" button that opens LUKSO's UP-Modal
+ *   (UP Browser Extension + Universal Profiles mobile app via WalletConnect + EOAs);
  * - Grid, disconnected → nothing (the host injects the connection on its own).
  */
 export default function UpConnect() {
-  const { walletConnected, isMiniApp, isLoading } = useUpProvider();
-  const [modalOpen, setModalOpen] = useState(false);
+  const { walletConnected, isMiniApp, isLoading, connect } = useUpProvider();
 
-  // Connected: show the profile pill. Gate on the connection alone — profile
-  // metadata loads asynchronously afterwards, and the pill degrades gracefully
-  // (UP logo + shortened address) until it arrives.
+  // Connected: show the profile pill. Profile metadata loads asynchronously and
+  // the pill degrades gracefully (UP logo + shortened address) until it arrives.
   if (walletConnected) {
     return <ProfilePill isMiniApp={isMiniApp} />;
   }
 
-  // Inside the Grid the connection is injected by the parent page — there's nothing
-  // for the user to click. Wait for the host instead of showing a connect button.
+  // Inside the Grid the connection is injected by the parent page — there's
+  // nothing for the user to click. Wait for the host instead.
   if (isMiniApp || isLoading) {
     return null;
   }
 
-  // Standalone, not connected: offer the connect modal.
+  // Standalone, not connected: open the UP-Modal sign-in dialog.
   return (
-    <>
-      <Button
-        type="button"
-        variant="glass"
-        size="pill"
-        onClick={() => setModalOpen(true)}
-        className="text-sm font-medium"
-      >
-        Connect
-      </Button>
-      <ConnectModal open={modalOpen} onOpenChange={setModalOpen} />
-    </>
+    <Button
+      type="button"
+      variant="glass"
+      size="pill"
+      onClick={() => void connect()}
+      className="text-sm font-medium"
+    >
+      Connect
+    </Button>
   );
 }
 
@@ -87,7 +71,7 @@ function ProfilePill({ isMiniApp }: { isMiniApp: boolean }) {
         />
         <AvatarFallback className="bg-transparent p-0">
           <Image
-            src="/up-logo.png"
+            src="/brand/cart-favicon.png"
             alt="UP!"
             width={28}
             height={28}
@@ -124,86 +108,5 @@ function ProfilePill({ isMiniApp }: { isMiniApp: boolean }) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function ConnectModal({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { connect, hasExtension, isConnecting, connectError, walletConnected } =
-    useUpProvider();
-
-  // Close automatically once the connection lands.
-  useEffect(() => {
-    if (walletConnected) onOpenChange(false);
-  }, [walletConnected, onOpenChange]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm rounded-2xl">
-        <DialogHeader className="items-center text-center sm:text-center">
-          <Image
-            src="/up-logo.png"
-            alt="Universal Profile"
-            width={48}
-            height={48}
-            className="mb-1 h-12 w-12 rounded-full"
-          />
-          <DialogTitle>Connect your Universal Profile</DialogTitle>
-          <DialogDescription>
-            {hasExtension
-              ? "Approve the connection in the Universal Profile extension to continue."
-              : "You'll need the Universal Profile Browser Extension to connect on this device."}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="mt-2 flex flex-col gap-2">
-          {hasExtension ? (
-            <Button
-              type="button"
-              variant="gradient"
-              size="pill"
-              onClick={() => connect()}
-              disabled={isConnecting}
-            >
-              {isConnecting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Connecting…
-                </>
-              ) : (
-                "Connect Universal Profile"
-              )}
-            </Button>
-          ) : (
-            <Button asChild variant="gradient" size="pill">
-              <a href={UP_EXTENSION_URL} target="_blank" rel="noopener noreferrer">
-                Install the extension
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            </Button>
-          )}
-
-          <Button asChild variant="ghost-outline" size="pill">
-            <a
-              href={UNIVERSAL_EVERYTHING_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Open in Universal Everything
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
-
-          {connectError && (
-            <p className="mt-1 text-center text-sm text-destructive">{connectError}</p>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

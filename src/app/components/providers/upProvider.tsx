@@ -6,12 +6,14 @@
  * 1. Grid mini-app (inside an iframe on universaleverything.io): the provider comes from
  *    `@lukso/up-provider` and the parent Grid page injects the connection. The mini-app can
  *    NOT call `eth_requestAccounts` itself — it listens for `accountsChanged`.
- * 2. Standalone (the site opened directly in a browser): the provider comes from the UP Browser
- *    Extension (`window.lukso`, EIP-1193). Here we DO drive the connection ourselves via
- *    `connect()` → `eth_requestAccounts`, which opens the extension's connect popup.
+ * 2. Standalone (the site opened directly in a browser): connection is handled by LUKSO's
+ *    `@lukso/up-modal`, which covers the UP Browser Extension (EIP-6963), the Universal
+ *    Profiles mobile app (WalletConnect) and other wallets in one dialog. We bridge its
+ *    wagmi connection back into this provider (provider + accounts) so the rest of the app
+ *    keeps working, and `reconnect()` restores the session at page load (auto-connect).
  *
  * @provides {UpProviderContext} Context containing:
- * - provider: active wallet provider instance (up-provider or injected extension)
+ * - provider: active wallet provider instance (up-provider, extension, or WalletConnect)
  * - client: Viem wallet client for blockchain interactions
  * - chainId: Current blockchain network ID
  * - accounts: Array of connected wallet addresses
@@ -21,11 +23,11 @@
  * - isSearching: Loading state indicator
  * - isMiniApp: Boolean indicating if running in mini-app context
  * - isLoading: Boolean indicating if the provider is loading
- * - hasExtension: Boolean — UP Browser Extension detected (standalone connect available)
+ * - hasExtension: Boolean — UP Browser Extension detected
  * - isConnecting: Boolean — a standalone connect request is in flight
  * - connectError: Last standalone connect error message, if any
- * - connect: Trigger the standalone extension connect popup
- * - disconnect: Clear the local standalone connection
+ * - connect: Open the UP-Modal sign-in dialog (extension + mobile + EOA)
+ * - disconnect: End the standalone session
  */
 "use client";
 
@@ -37,6 +39,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
   useMemo,
@@ -51,6 +54,21 @@ interface InjectedProvider {
 }
 
 type ActiveProvider = UPClientProvider | InjectedProvider;
+
+// Minimal shape of the UP-Modal connector + the wagmi connection we read back.
+type UpModalConnector = {
+  wagmiConfig: unknown;
+  showSignInModal: () => void;
+  closeModal?: () => void;
+  destroyModal?: () => void;
+  setTheme?: (theme: string) => void;
+};
+type WagmiConn = {
+  address?: string;
+  status?: string;
+  isConnected?: boolean;
+  connector?: { getProvider?: () => Promise<unknown> };
+};
 
 declare global {
   interface Window {
@@ -75,6 +93,7 @@ interface UpProviderContext {
   hasExtension: boolean;
   isConnecting: boolean;
   connectError: string | null;
+  /** Open the UP-Modal sign-in dialog (extension + UP mobile + EOA wallets). */
   connect: () => Promise<void>;
   disconnect: () => void;
 }
@@ -100,14 +119,23 @@ const isMiniAppContext = () => {
   }
 };
 
-// Resolve the injected UP Browser Extension provider for standalone use.
-// Prefer the UP-specific `window.lukso`, fall back to a UP-flagged `window.ethereum`.
+// Resolve the injected UP Browser Extension provider (for the hasExtension hint).
 const getInjectedProvider = (): InjectedProvider | null => {
   if (typeof window === "undefined") return null;
   if (window.lukso) return window.lukso;
   if (window.ethereum?.isUniversalProfileExtension) return window.ethereum;
   return null;
 };
+
+// The app's theme is a `dark` class on <html> (see ThemeProvider) and does NOT
+// follow the OS. Resolve it so the UP-Modal matches — passing "auto" would make
+// up-modal follow prefers-color-scheme and mismatch the app (e.g. an OS-dark
+// system renders the dark-theme QR — light dots — on the light modal, washing it out).
+const resolveAppTheme = (): "light" | "dark" =>
+  typeof document !== "undefined" &&
+  document.documentElement.classList.contains("dark")
+    ? "dark"
+    : "light";
 
 // Normalize a chainId returned as a number (up-provider) or hex string (extension).
 const toChainId = (value: unknown): number => {
@@ -120,16 +148,6 @@ const toChainId = (value: unknown): number => {
 const readContextAccounts = (provider: ActiveProvider): Array<`0x${string}`> => {
   const ctx = (provider as { contextAccounts?: Array<`0x${string}`> }).contextAccounts;
   return Array.isArray(ctx) ? ctx : [];
-};
-
-// Turn a wallet/RPC error into a short, user-facing message.
-const toConnectError = (error: unknown): string => {
-  if (error && typeof error === "object" && "code" in error) {
-    // EIP-1193 user-rejected request.
-    if ((error as { code?: number }).code === 4001) return "Connection request rejected.";
-  }
-  if (error instanceof Error && error.message) return error.message;
-  return "Failed to connect Universal Profile.";
 };
 
 const silenceLitDevWarnings = () => {
@@ -166,6 +184,12 @@ export function UpProvider({ children }: UpProviderProps) {
   const [hasExtension, setHasExtension] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  // UP-Modal connector + its connection watcher / disconnect, kept for connect()
+  // and disconnect() and cleaned up on unmount.
+  const upModalRef = useRef<UpModalConnector | null>(null);
+  const upDisconnectRef = useRef<(() => Promise<boolean>) | null>(null);
+  const unwatchRef = useRef<(() => void) | null>(null);
+  const themeObserverRef = useRef<MutationObserver | null>(null);
   const [account] = accounts ?? [];
   const [contextAccount] = contextAccounts ?? [];
 
@@ -176,7 +200,7 @@ export function UpProvider({ children }: UpProviderProps) {
     [account, contextAccount, isMiniApp]
   );
 
-  // Handle client-side context detection: Grid mini-app vs standalone extension.
+  // Handle client-side context detection: Grid mini-app vs standalone (UP-Modal).
   useEffect(() => {
     let cancelled = false;
 
@@ -200,25 +224,75 @@ export function UpProvider({ children }: UpProviderProps) {
           console.error("Failed to load Universal Profile provider:", error);
         });
     } else {
-      // Standalone: detect the UP Browser Extension and silently restore an
-      // already-authorized session (eth_accounts never opens a popup).
-      const injected = getInjectedProvider();
-      setHasExtension(Boolean(injected));
+      // Standalone: hand connection to LUKSO's UP-Modal and bridge its wagmi
+      // connection back into our state.
+      setHasExtension(Boolean(getInjectedProvider()));
 
-      if (injected) {
-        injected
-          .request({ method: "eth_accounts", params: [] })
-          .then((result) => {
-            if (cancelled) return;
-            const restored = (result as Array<`0x${string}`>) ?? [];
-            if (restored.length > 0) {
-              setProvider(injected);
-            }
-          })
-          .catch(() => {
-            /* not yet authorized — wait for an explicit connect() */
+      (async () => {
+        try {
+          const [{ setupLuksoConnector, watchConnection, disconnect: upDisconnect }, { reconnect }] =
+            await Promise.all([import("@lukso/up-modal"), import("@wagmi/core")]);
+          if (cancelled) return;
+
+          const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+          const connector = await setupLuksoConnector({
+            theme: resolveAppTheme(),
+            ...(projectId ? { walletConnect: { projectId } } : {}),
           });
-      }
+          if (cancelled) {
+            connector.destroyModal?.();
+            return;
+          }
+          upModalRef.current = connector;
+          upDisconnectRef.current = upDisconnect;
+
+          // Keep the UP-Modal theme in sync with the app's light/dark toggle so
+          // the QR (and modal) always match — never a washed-out QR.
+          const themeObserver = new MutationObserver(() => {
+            connector.setTheme?.(resolveAppTheme());
+          });
+          themeObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ["class"],
+          });
+          themeObserverRef.current = themeObserver;
+
+          // Mirror the wagmi connection into our provider/accounts. Reused for the
+          // initial restored session and every later change.
+          const bridge = async (conn: WagmiConn) => {
+            if (conn?.isConnected && conn.address) {
+              try {
+                const eip1193 = conn.connector?.getProvider
+                  ? await conn.connector.getProvider()
+                  : null;
+                if (!cancelled && eip1193) setProvider(eip1193 as ActiveProvider);
+              } catch {
+                /* provider not retrievable — accounts still set below */
+              }
+              if (!cancelled) setAccounts([conn.address as `0x${string}`]);
+            } else if (conn?.status === "disconnected") {
+              if (!cancelled) {
+                setProvider(null);
+                setAccounts([]);
+              }
+            }
+          };
+
+          const unwatch = await watchConnection(bridge);
+          if (cancelled) {
+            unwatch?.();
+            return;
+          }
+          unwatchRef.current = unwatch ?? null;
+
+          // Restore a persisted session — auto-connect at page load.
+          reconnect(
+            connector.wagmiConfig as Parameters<typeof reconnect>[0]
+          ).catch(() => {});
+        } catch (error) {
+          console.error("Failed to set up UP-Modal:", error);
+        }
+      })();
     }
 
     // Fallback timeout to ensure loading doesn't get stuck
@@ -230,6 +304,10 @@ export function UpProvider({ children }: UpProviderProps) {
     return () => {
       cancelled = true;
       clearTimeout(fallbackTimeout);
+      unwatchRef.current?.();
+      unwatchRef.current = null;
+      themeObserverRef.current?.disconnect();
+      themeObserverRef.current = null;
     };
   }, []);
 
@@ -243,34 +321,22 @@ export function UpProvider({ children }: UpProviderProps) {
     return null;
   }, [chainId, provider]);
 
-  // Open the UP Browser Extension connect popup (standalone only).
+  // Open the UP-Modal sign-in dialog (standalone). It handles extension, the UP
+  // mobile app (WalletConnect) and EOA wallets; the watcher bridges the result.
   const connect = useCallback(async () => {
-    const injected = getInjectedProvider();
-    if (!injected) {
-      setHasExtension(false);
-      setConnectError("No Universal Profile extension detected.");
+    const connector = upModalRef.current;
+    if (!connector) {
+      setConnectError("Connection isn't ready yet — please try again in a moment.");
       return;
     }
-
-    setIsConnecting(true);
     setConnectError(null);
-    try {
-      const result = await injected.request({ method: "eth_requestAccounts", params: [] });
-      const granted = (result as Array<`0x${string}`>) ?? [];
-      setProvider(injected);
-      if (granted.length > 0) {
-        setAccounts(granted);
-      }
-    } catch (error) {
-      setConnectError(toConnectError(error));
-    } finally {
-      setIsConnecting(false);
-    }
+    connector.showSignInModal();
   }, []);
 
-  // Local disconnect. EIP-1193 has no reliable dApp-initiated revoke, so this clears
-  // our session; the extension keeps the grant, making reconnect a single click.
+  // End the standalone session (WalletConnect / extension via UP-Modal/wagmi).
   const disconnect = useCallback(() => {
+    upDisconnectRef.current?.().catch(() => {});
+    upModalRef.current?.closeModal?.();
     setProvider(null);
     setAccounts([]);
     setContextAccounts([]);
@@ -322,15 +388,27 @@ export function UpProvider({ children }: UpProviderProps) {
         setChainId(toChainId(_args[0]));
       };
 
+      // WalletConnect (and some wallets) emit `disconnect` when the session ends
+      // from the wallet side — mirror it into our local state.
+      const disconnected = () => {
+        setAccounts([]);
+        setContextAccounts([]);
+        setProvider(null);
+      };
+
       provider.on?.("accountsChanged", accountsChanged);
       provider.on?.("chainChanged", chainChanged);
       provider.on?.("contextAccountsChanged", contextAccountsChanged);
+      // `disconnect` isn't in the Grid up-provider's typed events, so address it
+      // through the generic EIP-1193 shape (WalletConnect/extension emit it).
+      (provider as InjectedProvider).on?.("disconnect", disconnected);
 
       return () => {
         mounted = false;
         provider.removeListener?.("accountsChanged", accountsChanged);
         provider.removeListener?.("contextAccountsChanged", contextAccountsChanged);
         provider.removeListener?.("chainChanged", chainChanged);
+        (provider as InjectedProvider).removeListener?.("disconnect", disconnected);
       };
     }
   }, [provider]);
