@@ -53,9 +53,9 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "/brand/upstore-wordmark.webp",
-        width: 960,
-        height: 220,
+        url: "/brand/og-image.png",
+        width: 1200,
+        height: 630,
         alt: siteName,
       },
     ],
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: siteName,
     description: siteDescription,
-    images: ["/brand/upstore-wordmark.webp"],
+    images: ["/brand/og-image.png"],
   },
   robots: {
     index: true,
