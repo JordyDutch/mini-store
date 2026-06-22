@@ -42,8 +42,8 @@ export const metadata: Metadata = {
   authors: [{ name: siteName, url: siteUrl }],
   creator: siteName,
   publisher: siteName,
-  // Page-level OG image is supplied by app/opengraph-image.tsx (file convention);
-  // per-app pages override title/description/images in their generateMetadata.
+  // Default social-share image is the UP!Store wordmark; per-app pages override
+  // title/description/images in their generateMetadata.
   openGraph: {
     type: "website",
     siteName,
@@ -51,11 +51,20 @@ export const metadata: Metadata = {
     description: siteDescription,
     url: siteUrl,
     locale: "en_US",
+    images: [
+      {
+        url: "/brand/upstore-wordmark.webp",
+        width: 960,
+        height: 220,
+        alt: siteName,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: siteName,
     description: siteDescription,
+    images: ["/brand/upstore-wordmark.webp"],
   },
   robots: {
     index: true,
