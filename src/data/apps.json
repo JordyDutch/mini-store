@@ -20,6 +20,7 @@
   "stakingverse-staking": {
     "name": "Stakingverse: Stake Your LYX",
     "url": "https://app.stakingverse.io/",
+    "sourceCode": "https://github.com/JordyDutch/up-store",
     "developer": "Stakingverse",
     "publisher": "0x900Be67854A47282211844BbdF5Cc0f332620513",
     "categories": [
