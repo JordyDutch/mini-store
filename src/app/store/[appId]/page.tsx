@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import StoreDirectoryExperience from "@/components/StoreDirectoryExperience";
 import { apps } from "@/data/appCatalog";
 import { serializeApp } from "@/lib/catalog";
+import { buildUniversalProfilesItunesMeta } from "@/lib/universalProfilesApp";
 
 interface StoreAppPageProps {
   params: Promise<{
@@ -23,10 +24,12 @@ export async function generateMetadata({
 }: StoreAppPageProps): Promise<Metadata> {
   const { appId } = await params;
   const app = apps[appId];
+  const appPath = `/store/${encodeURIComponent(appId)}`;
 
   if (!app) {
     return {
       title: "App not found | LUKSO UP! Store",
+      itunes: buildUniversalProfilesItunesMeta(appPath),
     };
   }
 
@@ -40,6 +43,7 @@ export async function generateMetadata({
   return {
     title: `${app.app.name} | LUKSO UP! Store`,
     description: description || "Discover this app on the LUKSO UP! Store.",
+    itunes: buildUniversalProfilesItunesMeta(appPath),
     openGraph: {
       title: `${app.app.name} | LUKSO UP! Store`,
       description: description || "Discover this app on the LUKSO UP! Store.",

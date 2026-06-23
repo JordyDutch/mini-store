@@ -6,6 +6,7 @@ import { Analytics } from "@vercel/analytics/next";
 
 import { Providers } from "./components/providers/providers";
 import { siteUrl } from "@/lib/site";
+import { buildUniversalProfilesItunesMeta } from "@/lib/universalProfilesApp";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -82,6 +83,7 @@ export const metadata: Metadata = {
     shortcut: "/favicon.ico",
     apple: "/brand/cart-favicon.png",
   },
+  itunes: buildUniversalProfilesItunesMeta("/"),
 };
 
 export const viewport: Viewport = {
