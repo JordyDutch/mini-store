@@ -4,7 +4,10 @@
  * absolute URL the store emits is consistent.
  */
 export const siteUrl = (
-  process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.NODE_ENV === "development"
+    ? "http://localhost:3000"
+    : "https://apps.lukso.tools")
 ).replace(/\/$/, "");
 
 /** Build an absolute URL on this site from a path or relative asset. */
