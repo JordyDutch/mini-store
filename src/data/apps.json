@@ -1,4 +1,14 @@
-{
+{"fullsend": {
+    "name": "FullSend",
+    "url": "https://fullsend.live",
+    "developer": "Metaheads Studios",
+    "publisher": "0x29d7c7e4571a83b3ef5c867f75c81d736a9d58aa",
+    "categories": ["Social", "Community"],
+    "gridSize": [1, 2],
+    "screenshots": 6,
+    "tags": ["tipping", "creators", "live streams", "polls", "LYX", "OBS overlay"],
+    "featured": false
+  },
   "defolio-multisend": {
     "name": "Multisend: Send Tokens & NFTs",
     "url": "https://multisend-alpha.vercel.app/",
